@@ -13,9 +13,7 @@ namespace Libraries::Usbd {
 
 libusb_transfer* PS4_SYSV_ABI sceUsbdAllocTransfer(s32 iso_packets);
 int PS4_SYSV_ABI sceUsbdAttachKernelDriver(libusb_device_handle* dev_handle, s32 interface_num);
-int PS4_SYSV_ABI sceUsbdBulkTransfer(libusb_device_handle* dev_handle, unsigned char endpoint,
-                                     unsigned char* data, s32 length, s32* transferred,
-                                     u32 timeout);
+int PS4_SYSV_ABI sceUsbdBulkTransfer();
 int PS4_SYSV_ABI sceUsbdCancelTransfer(struct libusb_transfer* transfer);
 int PS4_SYSV_ABI sceUsbdCheckConnected(libusb_device_handle* dev_handle);
 int PS4_SYSV_ABI sceUsbdClaimInterface(libusb_device_handle* dev_handle, s32 interface_num);
@@ -31,11 +29,7 @@ int PS4_SYSV_ABI sceUsbdDetachKernelDriver(libusb_device_handle* dev_handle, s32
 void PS4_SYSV_ABI sceUsbdEventHandlerActive();
 void PS4_SYSV_ABI sceUsbdEventHandlingOk();
 int PS4_SYSV_ABI sceUsbdExit();
-void PS4_SYSV_ABI sceUsbdFillBulkTransfer(struct libusb_transfer* transfer,
-                                          libusb_device_handle* dev_handle, unsigned char endpoint,
-                                          unsigned char* buffer, u32 length,
-                                          libusb_transfer_cb_fn callback, void* user_data,
-                                          u32 timeout);
+int PS4_SYSV_ABI sceUsbdFillBulkTransfer();
 void PS4_SYSV_ABI sceUsbdFillControlSetup(unsigned char* buffer, u8 request_type, u8 request,
                                           u16 value, u16 index, u16 length);
 void PS4_SYSV_ABI sceUsbdFillControlTransfer(struct libusb_transfer* transfer,
@@ -65,7 +59,7 @@ int PS4_SYSV_ABI sceUsbdGetConfigDescriptorByValue(libusb_device* dev, u8 config
 int PS4_SYSV_ABI sceUsbdGetConfiguration(libusb_device_handle* dev_handle, s32* config);
 int PS4_SYSV_ABI sceUsbdGetDescriptor(libusb_device_handle* dev_handle, u8 desc_type, u8 desc_index,
                                       unsigned char* data, s32 length);
-libusb_device* PS4_SYSV_ABI sceUsbdGetDevice();
+libusb_device* PS4_SYSV_ABI sceUsbdGetDevice(libusb_device_handle* dev_handle);
 int PS4_SYSV_ABI sceUsbdGetDeviceAddress(libusb_device* dev);
 int PS4_SYSV_ABI sceUsbdGetDeviceDescriptor(libusb_device* dev,
                                             struct libusb_device_descriptor* config);
@@ -78,7 +72,7 @@ int PS4_SYSV_ABI sceUsbdGetStringDescriptor(libusb_device_handle* dev_handle, u8
                                             u16 lang_id, unsigned char* data, s32 length);
 int PS4_SYSV_ABI sceUsbdGetStringDescriptorAscii(libusb_device_handle* dev_handle, u8 desc_index,
                                                  u16 lang_id, unsigned char* data, s32 length);
-int PS4_SYSV_ABI sceUsbdHandleEvents();
+int PS4_SYSV_ABI sceUsbdHandleEvents(int* seconds);
 int PS4_SYSV_ABI sceUsbdHandleEventsLocked();
 int PS4_SYSV_ABI sceUsbdHandleEventsTimeout(int* time_value);
 int PS4_SYSV_ABI sceUsbdInit();

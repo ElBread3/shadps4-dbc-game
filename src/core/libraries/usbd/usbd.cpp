@@ -8,39 +8,11 @@
 #include "core/libraries/error_codes.h"
 #include "core/libraries/libs.h"
 #include "libusb.h"
+#include "usb_device.h"
 #include "usbd.h"
+#include "usbd_impl.h"
 
 namespace Libraries::Usbd {
-
-libusb_context* ctx = nullptr;
-
-#if LIBUSB_API_VERSION >= 0x0100010A
-static void LIBUSB_CALL printlog_callback(libusb_context* /*ctx*/, enum libusb_log_level level,
-                                          const char* str) {
-    if (!str) {
-        return;
-    }
-
-    const std::string str_copy = str;
-    std::string msg = {};
-    const size_t begin = str_copy.find_first_not_of(" \t\n");
-
-    if (begin != str_copy.npos) {
-        msg = str_copy.substr(begin, str_copy.find_last_not_of(" \t\n") + 1);
-    }
-    switch (level) {
-    case LIBUSB_LOG_LEVEL_ERROR:
-        LOG_WARNING(Lib_Usbd, "{}", msg);
-        break;
-    case LIBUSB_LOG_LEVEL_INFO:
-        LOG_INFO(Lib_Usbd, "{}", msg);
-    case LIBUSB_LOG_LEVEL_DEBUG:
-        LOG_DEBUG(Lib_Usbd, "{}", msg);
-    default:
-        break;
-    }
-}
-#endif
 
 static int LibusbErrToOrbis(const int error_code) {
     ASSERT_MSG(error_code < 1, "Passed an invalid error code!");
@@ -84,19 +56,14 @@ libusb_transfer* PS4_SYSV_ABI sceUsbdAllocTransfer(s32 iso_packets) {
 }
 
 int PS4_SYSV_ABI sceUsbdAttachKernelDriver(libusb_device_handle* dev_handle, s32 interface_num) {
-    LOG_INFO(Lib_Usbd, "called");
+    LOG_ERROR(Lib_Usbd, "(STUBBED)called");
     if (dev_handle == nullptr) {
         return SCE_USBD_ERROR_INVALID_ARG;
     }
-    int err = libusb_attach_kernel_driver(dev_handle, interface_num);
-    return (err == LIBUSB_SUCCESS || err == LIBUSB_ERROR_NOT_SUPPORTED)
-               ? ORBIS_OK
-               : SCE_USBD_ERROR_FATAL; // Mercy is for the weak!
+    return ORBIS_OK;
 }
 
-int PS4_SYSV_ABI sceUsbdBulkTransfer(libusb_device_handle* dev_handle, unsigned char endpoint,
-                                     unsigned char* data, s32 length, s32* transferred,
-                                     u32 timeout) {
+int PS4_SYSV_ABI sceUsbdBulkTransfer() {
     LOG_ERROR(Lib_Usbd, "(STUBBED)called");
     return ORBIS_OK;
 }
@@ -114,13 +81,16 @@ int PS4_SYSV_ABI sceUsbdCheckConnected(libusb_device_handle* dev_handle) {
 
     // Libusb doesn't have this, so I guess we'll check if we can still get the device's info
     struct libusb_device_descriptor desc;
-    libusb_device* dev = libusb_get_device(dev_handle);
+    libusb_device* dev = sceUsbdGetDevice(dev_handle);
     if (!dev) {
-        return SCE_USBD_ERROR_INVALID_ARG; //???
+        return SCE_USBD_ERROR_NO_DEVICE; //???
     }
 
-    int ret = libusb_get_device_descriptor(dev, &desc);
-    return (ret == 0) ? ORBIS_OK : SCE_USBD_ERROR_NO_DEVICE;
+    int err = sceUsbdGetDeviceDescriptor(dev, &desc);
+    if (err < 0 || !desc.idProduct) {
+        return SCE_USBD_ERROR_NO_DEVICE;
+    }
+    return ORBIS_OK;
 }
 
 int PS4_SYSV_ABI sceUsbdClaimInterface(libusb_device_handle* dev_handle, s32 interface_num) {
@@ -128,6 +98,7 @@ int PS4_SYSV_ABI sceUsbdClaimInterface(libusb_device_handle* dev_handle, s32 int
     if (dev_handle == nullptr || interface_num < 32) {
         return SCE_USBD_ERROR_INVALID_ARG;
     }
+    UNREACHABLE_MSG("not yet");
     int err = libusb_claim_interface(dev_handle, interface_num);
     return LibusbErrToOrbis(err);
 }
@@ -172,10 +143,7 @@ int PS4_SYSV_ABI sceUsbdDetachKernelDriver(libusb_device_handle* dev_handle, s32
     if (dev_handle == nullptr) {
         return SCE_USBD_ERROR_INVALID_ARG;
     }
-    int err = libusb_detach_kernel_driver(dev_handle, interface_num);
-    return (err == LIBUSB_SUCCESS || err == LIBUSB_ERROR_NOT_SUPPORTED)
-               ? ORBIS_OK
-               : SCE_USBD_ERROR_FATAL; // Mercy is for the weak!
+    return ORBIS_OK;
 }
 
 void PS4_SYSV_ABI sceUsbdEventHandlerActive() {
@@ -190,17 +158,13 @@ void PS4_SYSV_ABI sceUsbdEventHandlingOk() {
 
 int PS4_SYSV_ABI sceUsbdExit() {
     LOG_INFO(Lib_Usbd, "called");
-    libusb_exit(ctx);
+    UsbImplementation::Instance()->deinitialize();
     return ORBIS_OK;
 }
 
-void PS4_SYSV_ABI sceUsbdFillBulkTransfer(struct libusb_transfer* transfer,
-                                          libusb_device_handle* dev_handle, unsigned char endpoint,
-                                          unsigned char* buffer, u32 length,
-                                          libusb_transfer_cb_fn callback, void* user_data,
-                                          u32 timeout) {
+int PS4_SYSV_ABI sceUsbdFillBulkTransfer() {
     LOG_ERROR(Lib_Usbd, "(STUBBED)called");
-    UNREACHABLE_MSG("unimplemented");
+    return ORBIS_OK;
 }
 
 void PS4_SYSV_ABI sceUsbdFillControlSetup(unsigned char* buffer, u8 request_type, u8 request,
@@ -248,8 +212,8 @@ void PS4_SYSV_ABI sceUsbdFreeDeviceList(libusb_device** list) {
 }
 
 void PS4_SYSV_ABI sceUsbdFreeTransfer(struct libusb_transfer* transfer) {
-    LOG_ERROR(Lib_Usbd, "(STUBBED)called");
-    UNREACHABLE_MSG("unimplemented");
+    LOG_INFO(Lib_Usbd, "called");
+    libusb_free_transfer(transfer);
 }
 
 int PS4_SYSV_ABI sceUsbdGetActiveConfigDescriptor(libusb_device* dev,
@@ -276,6 +240,7 @@ int PS4_SYSV_ABI sceUsbdGetConfigDescriptor(libusb_device* dev, u8 config_index,
     if (dev == nullptr || config == nullptr) {
         return SCE_USBD_ERROR_INVALID_ARG;
     }
+    UNREACHABLE_MSG("not yet");
     int err = libusb_get_config_descriptor(dev, config_index, config);
     return LibusbErrToOrbis(err);
 }
@@ -286,6 +251,7 @@ int PS4_SYSV_ABI sceUsbdGetConfigDescriptorByValue(libusb_device* dev, u8 config
     if (dev == nullptr || config == nullptr) {
         return SCE_USBD_ERROR_INVALID_ARG;
     }
+    UNREACHABLE_MSG("not yet");
     int err = libusb_get_config_descriptor_by_value(dev, config_value, config);
     return LibusbErrToOrbis(err);
 }
@@ -301,10 +267,12 @@ int PS4_SYSV_ABI sceUsbdGetDescriptor(libusb_device_handle* dev_handle, u8 desc_
     return ORBIS_OK;
 }
 
-libusb_device* PS4_SYSV_ABI sceUsbdGetDevice() {
-    LOG_ERROR(Lib_Usbd, "(STUBBED)called");
-    UNREACHABLE_MSG("unimplemented");
-    return nullptr;
+libusb_device* PS4_SYSV_ABI sceUsbdGetDevice(libusb_device_handle* dev_handle) {
+    LOG_INFO(Lib_Usbd, "called");
+    if (dev_handle == nullptr) {
+        return 0;
+    }
+    return libusb_get_device(dev_handle);
 }
 
 int PS4_SYSV_ABI sceUsbdGetDeviceAddress(libusb_device* dev) {
@@ -327,7 +295,7 @@ int PS4_SYSV_ABI sceUsbdGetDeviceDescriptor(libusb_device* dev,
 
 int PS4_SYSV_ABI sceUsbdGetDeviceList(libusb_device*** list) {
     LOG_INFO(Lib_Usbd, "called");
-    ssize_t count = libusb_get_device_list(ctx, list);
+    ssize_t count = UsbImplementation::Instance()->get_device_list(list);
     if (count <= 0) {
         return LibusbErrToOrbis(count);
     }
@@ -335,8 +303,8 @@ int PS4_SYSV_ABI sceUsbdGetDeviceList(libusb_device*** list) {
 }
 
 int PS4_SYSV_ABI sceUsbdGetDeviceSpeed(libusb_device* dev) {
-    LOG_ERROR(Lib_Usbd, "(STUBBED)called");
-    return ORBIS_OK;
+    LOG_INFO(Lib_Usbd, "called");
+    return libusb_get_device_speed(dev);
 }
 
 unsigned char* PS4_SYSV_ABI sceUsbdGetIsoPacketBuffer(struct libusb_transfer* transfer,
@@ -374,44 +342,26 @@ int PS4_SYSV_ABI sceUsbdGetStringDescriptorAscii(libusb_device_handle* dev_handl
     return ORBIS_OK;
 }
 
-int PS4_SYSV_ABI sceUsbdHandleEvents() {
-    LOG_INFO(Lib_Usbd, "called");
-    int err = libusb_handle_events(ctx);
-    return LibusbErrToOrbis(err);
+int PS4_SYSV_ABI sceUsbdHandleEvents(int* seconds) {
+    LOG_INFO(Lib_Usbd, "redirecting to HandleEventsTimeout...");
+    return sceUsbdHandleEventsTimeout(seconds);
 }
 
 int PS4_SYSV_ABI sceUsbdHandleEventsLocked() {
-    LOG_INFO(Lib_Usbd, "called");
-    int err = libusb_handle_events_locked(ctx, 0);
-    return LibusbErrToOrbis(err);
+    LOG_ERROR(Lib_Usbd, "(STUBBED)called");
+    return ORBIS_OK;
 }
 
-int PS4_SYSV_ABI sceUsbdHandleEventsTimeout(int* time_value) {
+int PS4_SYSV_ABI sceUsbdHandleEventsTimeout(int* seconds) {
     LOG_INFO(Lib_Usbd, "called");
-    timeval timeout = {*time_value / 1000, (*time_value % 1000) * 1000};
-    int err = libusb_handle_events_timeout(ctx, &timeout);
+    int err = UsbImplementation::Instance()->operate({*seconds, 0});
     return LibusbErrToOrbis(err);
 }
 
 int PS4_SYSV_ABI sceUsbdInit() {
     LOG_INFO(Lib_Usbd, "called");
-#if LIBUSB_API_VERSION >= 0x0100010A
-    libusb_init_option log_level_opt{};
-    log_level_opt.option = LIBUSB_OPTION_LOG_LEVEL;
-    log_level_opt.value.ival = LIBUSB_LOG_LEVEL_WARNING;
-
-    libusb_init_option log_callback_opt{};
-    log_callback_opt.option = LIBUSB_OPTION_LOG_CB;
-    log_callback_opt.value.log_cbval = &printlog_callback;
-
-    std::vector<libusb_init_option> options = {std::move(log_level_opt),
-                                               std::move(log_callback_opt)};
-
-    int err = libusb_init_context(&ctx, options.data(), static_cast<int>(options.size()));
-#else
-    int err = libusb_init(&ctx);
-#endif
-    return LibusbErrToOrbis(err);
+    UsbImplementation::Instance()->initialize();
+    return ORBIS_OK;
 }
 
 int PS4_SYSV_ABI sceUsbdInterruptTransfer(libusb_device_handle* dev_handle, unsigned char endpoint,
@@ -448,14 +398,40 @@ int PS4_SYSV_ABI sceUsbdOpen(libusb_device* dev, libusb_device_handle** dev_hand
     if (dev == nullptr || dev_handle == nullptr) {
         return SCE_USBD_ERROR_INVALID_ARG; //???
     }
-    int err = libusb_open(dev, dev_handle);
+    int err = UsbImplementation::Instance()->open_device(dev, dev_handle);
     return LibusbErrToOrbis(err);
 }
 
 libusb_device_handle* PS4_SYSV_ABI sceUsbdOpenDeviceWithVidPid(u16 vendor_id, u16 product_id) {
     LOG_INFO(Lib_Usbd, "called");
-    auto dev = libusb_open_device_with_vid_pid(ctx, vendor_id, product_id);
-    return dev;
+
+    struct libusb_device** devs;
+    struct libusb_device* found = nullptr;
+    struct libusb_device* dev;
+    struct libusb_device_handle* dev_handle = nullptr;
+    size_t i = 0;
+
+    if (sceUsbdGetDeviceList(&devs) < 0) {
+        return nullptr;
+    }
+
+    while ((dev = devs[i++]) != nullptr) {
+        struct libusb_device_descriptor desc;
+        int r = sceUsbdGetDeviceDescriptor(dev, &desc);
+        if (r < 0) {
+            return nullptr;
+        }
+        if (desc.idVendor == vendor_id && desc.idProduct == product_id) {
+            found = dev;
+            break;
+        }
+    }
+
+    if (found) {
+        return nullptr;
+    }
+
+    return dev_handle;
 }
 
 void PS4_SYSV_ABI sceUsbdRefDevice() {
