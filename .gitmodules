@@ -105,3 +105,6 @@
 [submodule "externals/libpng"]
 	path = externals/libpng
 	url = https://github.com/pnggroup/libpng
+[submodule "externals/libusb"]
+	path = externals/libusb
+	url = https://github.com/libusb/libusb-cmake.git
