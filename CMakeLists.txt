@@ -388,6 +388,11 @@ set(RANDOM_LIB src/core/libraries/random/random.cpp
 
 set(USBD_LIB src/core/libraries/usbd/usbd.cpp
              src/core/libraries/usbd/usbd.h
+             src/core/libraries/usbd/usbd_impl.cpp
+             src/core/libraries/usbd/usbd_impl.h
+             src/core/libraries/usbd/usb_device.cpp
+             src/core/libraries/usbd/usb_device.h
+             src/core/libraries/usbd/usb_errors.h
 )
 
 set(FIBER_LIB src/core/libraries/fiber/fiber.cpp

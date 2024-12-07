@@ -5,10 +5,10 @@
 #include "common/assert.h"
 #include "common/logging/log.h"
 #include "common/singleton.h"
-#include "core/libraries/error_codes.h"
 #include "core/libraries/libs.h"
 #include "libusb.h"
 #include "usb_device.h"
+#include "usb_errors.h"
 #include "usbd.h"
 #include "usbd_impl.h"
 
@@ -103,9 +103,9 @@ int PS4_SYSV_ABI sceUsbdClaimInterface(libusb_device_handle* dev_handle, s32 int
     return LibusbErrToOrbis(err);
 }
 
-void PS4_SYSV_ABI sceUsbdClearHalt() {
+int PS4_SYSV_ABI sceUsbdClearHalt() {
     LOG_ERROR(Lib_Usbd, "(STUBBED)called");
-    UNREACHABLE_MSG("unimplemented");
+    return ORBIS_OK;
 }
 
 void PS4_SYSV_ABI sceUsbdClose(libusb_device_handle* dev_handle) {
@@ -404,34 +404,7 @@ int PS4_SYSV_ABI sceUsbdOpen(libusb_device* dev, libusb_device_handle** dev_hand
 
 libusb_device_handle* PS4_SYSV_ABI sceUsbdOpenDeviceWithVidPid(u16 vendor_id, u16 product_id) {
     LOG_INFO(Lib_Usbd, "called");
-
-    struct libusb_device** devs;
-    struct libusb_device* found = nullptr;
-    struct libusb_device* dev;
-    struct libusb_device_handle* dev_handle = nullptr;
-    size_t i = 0;
-
-    if (sceUsbdGetDeviceList(&devs) < 0) {
-        return nullptr;
-    }
-
-    while ((dev = devs[i++]) != nullptr) {
-        struct libusb_device_descriptor desc;
-        int r = sceUsbdGetDeviceDescriptor(dev, &desc);
-        if (r < 0) {
-            return nullptr;
-        }
-        if (desc.idVendor == vendor_id && desc.idProduct == product_id) {
-            found = dev;
-            break;
-        }
-    }
-
-    if (found) {
-        return nullptr;
-    }
-
-    return dev_handle;
+    return UsbImplementation::Instance()->open_device_with_ids(vendor_id, product_id);
 }
 
 void PS4_SYSV_ABI sceUsbdRefDevice() {

@@ -45,17 +45,12 @@ class UsbHandler {
 public:
     void LIBUSB_CALL callback_transfer(struct libusb_transfer* transfer);
 
-    UsbHandler();
     void initialize();
-    ~UsbHandler();
     void deinitialize();
 
     int operate(timeval lusb_tv);
 
     void transfer_complete(libusb_transfer* transfer);
-
-    bool get_event(u64* arg1, u64* arg2, u64* arg3);
-    void add_event(u64 arg1, u64 arg2, u64 arg3);
 
     std::pair<u32, UsbTransfer&> get_free_transfer();
     std::pair<u32, u32> get_transfer_status(u32 transfer_id);
@@ -70,42 +65,29 @@ public:
     ssize_t get_device_list(libusb_device*** list);
 
     int open_device(libusb_device* dev, libusb_device_handle** dev_handle);
+    libusb_device_handle* open_device_with_ids(u16 vendor_id, u16 product_id);
 
-    std::shared_ptr<UsbDevice>* get_device_from_ids(u16 vendor_id, u16 product_id);
-    std::shared_ptr<UsbDevice>* get_device_from_bus_number(int bus_number);
+    libusb_device* find_device_from_ids(struct libusb_device** devs, u16 vendor_id, u16 product_id);
+    std::shared_ptr<UsbDevice>* UsbHandler::find_device_from_bus_number(int bus_number);
 
     std::vector<std::shared_ptr<UsbDevice>> open_devices;
 
     std::shared_mutex mutex;
     std::atomic<bool> is_init = false;
 
-    // sys_usbd_receive_event PPU Threads
-    std::shared_mutex mutex_sq;
-
-    static constexpr auto thread_name = "Usb Manager Thread";
-
 private:
     // Lock free functions for internal use(ie make sure to lock before using those)
     UsbTransfer& get_transfer(u32 transfer_id);
     u32 get_free_transfer_id();
 
-    void send_message(u32 message, u32 tr_id);
-
 private:
-    // Counters for device IDs, transfer IDs and pipe IDs
-    std::atomic<u8> dev_counter = 1;
-    u32 transfer_counter = 0;
-
     // Transfers infos
+    u32 transfer_counter = 0;
     std::shared_mutex mutex_transfers;
     std::array<UsbTransfer, MAX_SYS_USBD_TRANSFERS> transfers;
     std::vector<UsbTransfer*> fake_transfers;
 
-    // Queue of pending usbd events
-    std::queue<std::tuple<u64, u64, u64>> usbd_events;
-
     // List of devices "connected" to the ps3
-    std::array<u8, 7> location{};
     std::vector<std::shared_ptr<UsbDevice>> usb_devices;
 
     libusb_context* ctx = nullptr;

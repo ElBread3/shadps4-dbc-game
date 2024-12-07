@@ -52,10 +52,6 @@ static void LIBUSB_CALL printlog_callback(libusb_context* /*ctx*/, enum libusb_l
 }
 #endif
 
-UsbHandler::UsbHandler() {
-    // initialize();
-}
-
 void UsbHandler::initialize() {
 #if LIBUSB_API_VERSION >= 0x0100010A
     libusb_init_option log_lv_opt{};
@@ -200,10 +196,6 @@ int UsbHandler::operate(timeval lusb_tv) {
     return 0;
 }
 
-void UsbHandler::send_message(u32 message, u32 tr_id) {
-    add_event(message, tr_id, 0x00);
-}
-
 void UsbHandler::transfer_complete(struct libusb_transfer* transfer) {
     std::lock_guard lock_tf(mutex_transfers);
 
@@ -241,27 +233,6 @@ void UsbHandler::transfer_complete(struct libusb_transfer* transfer) {
     usbd_transfer->busy = false;
 
     LOG_TRACE(Lib_Usbd, "Transfer complete(0x%x): %s", usbd_transfer->transfer_id, *transfer);
-}
-
-bool UsbHandler::get_event(u64* arg1, u64* arg2, u64* arg3) {
-    if (!usbd_events.empty()) {
-        const auto& usb_event = usbd_events.front();
-        *arg1 = std::get<0>(usb_event);
-        *arg2 = std::get<1>(usb_event);
-        *arg3 = std::get<2>(usb_event);
-        usbd_events.pop();
-        LOG_TRACE(Lib_Usbd, "Received event: arg1=0x%x arg2=0x%x arg3=0x%x", *arg1, *arg2, *arg3);
-        return true;
-    }
-
-    return false;
-}
-
-void UsbHandler::add_event(u64 arg1, u64 arg2, u64 arg3) {
-    std::lock_guard lock_sq(mutex_sq);
-
-    LOG_TRACE(Lib_Usbd, "Sending event: arg1=0x%x arg2=0x%x arg3=0x%x", arg1, arg2, arg3);
-    usbd_events.emplace(arg1, arg2, arg3);
 }
 
 u32 UsbHandler::get_free_transfer_id() {
@@ -316,11 +287,6 @@ std::pair<u32, UsbDeviceIsoRequest> UsbHandler::get_isochronous_transfer_status(
 void UsbHandler::push_fake_transfer(UsbTransfer* transfer) {
     std::lock_guard lock_tf(mutex_transfers);
     fake_transfers.push_back(transfer);
-}
-
-const std::array<u8, 7>& UsbHandler::get_new_location() {
-    location[0]++;
-    return location;
 }
 
 int UsbHandler::open_usb_device(std::shared_ptr<UsbDevice> dev) {
@@ -453,8 +419,7 @@ out:
 int UsbHandler::open_device(libusb_device* dev, libusb_device_handle** dev_handle) {
     struct libusb_device_handle* _dev_handle;
 
-    auto* dev2 =
-        UsbImplementation::Instance()->get_device_from_bus_number(libusb_get_bus_number(dev));
+    auto* dev2 = this->find_device_from_bus_number(libusb_get_bus_number(dev));
     if (dev2 == nullptr) {
         return LIBUSB_ERROR_NO_DEVICE;
     }
@@ -469,7 +434,7 @@ int UsbHandler::open_device(libusb_device* dev, libusb_device_handle** dev_handl
 
     _dev_handle->dev = libusb_ref_device(dev);
 
-    int err = UsbImplementation::Instance()->open_usb_device(*dev2);
+    int err = this->open_usb_device(*dev2);
     if (err < 0) {
         libusb_unref_device(dev);
         free(_dev_handle);
@@ -481,19 +446,44 @@ int UsbHandler::open_device(libusb_device* dev, libusb_device_handle** dev_handl
     return 0;
 }
 
-std::shared_ptr<UsbDevice>* UsbHandler::get_device_from_ids(u16 vendor_id, u16 product_id) {
-    auto it = std::find_if(usb_devices.begin(), usb_devices.end(),
-                           [vendor_id, product_id](const std::shared_ptr<UsbDevice>& dev) {
-                               return dev && dev->device._device.idVendor == vendor_id &&
-                                      dev->device._device.idProduct == product_id;
-                           });
-    return (it != usb_devices.end()) ? &(*it) : nullptr;
+libusb_device* UsbHandler::find_device_from_ids(struct libusb_device** devs, u16 vendor_id,
+                                                u16 product_id) {
+    struct libusb_device* dev;
+    size_t i = 0;
+
+    while ((dev = devs[i++]) != nullptr) {
+        struct libusb_device_descriptor desc;
+        if (libusb_get_device_descriptor(dev, &desc) < 0) {
+            return nullptr;
+        }
+        if (desc.idVendor == vendor_id && desc.idProduct == product_id) {
+            return dev;
+        }
+    }
+    return nullptr;
 }
 
-std::shared_ptr<UsbDevice>* UsbHandler::get_device_from_bus_number(int bus_number) {
+std::shared_ptr<UsbDevice>* UsbHandler::find_device_from_bus_number(int bus_number) {
     if (bus_number < 0 || bus_number >= usb_devices.size()) {
         return nullptr;
     }
     return &usb_devices[bus_number];
+}
+
+libusb_device_handle* UsbHandler::open_device_with_ids(u16 vendor_id, u16 product_id) {
+    struct libusb_device** devs;
+    struct libusb_device_handle* dev_handle = nullptr;
+
+    if (this->get_device_list(&devs) < 0) {
+        return nullptr;
+    }
+
+    struct libusb_device* dev = this->find_device_from_ids(devs, vendor_id, product_id);
+    if (dev && this->open_device(dev, &dev_handle) < 0) {
+        return nullptr;
+    }
+
+    libusb_free_device_list(devs, 1);
+    return dev_handle;
 }
 } // namespace Libraries::Usbd
